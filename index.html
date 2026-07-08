@@ -333,9 +333,11 @@ async function renderManagerHome() {
   list.innerHTML = cabangs.map(c => {
     const j = jurnalMap[c.id];
     const belumSetup = (!c.latitude || c.latitude == 0);
-    const [dh, dm] = c.jam_deadline.split(':');
-    const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
-    const lewat = now > deadline;
+    const [mh, mm] = (c.jam_kunjungan_mulai || '12:30').split(':');
+    const [ah, am] = (c.jam_kunjungan_akhir || '18:00').split(':');
+    const jamMulai = new Date(); jamMulai.setHours(+mh, +mm, 0, 0);
+    const jamAkhir = new Date(); jamAkhir.setHours(+ah, +am, 0, 0);
+    const rentang = `${c.jam_kunjungan_mulai || '12:30'} - ${c.jam_kunjungan_akhir || '18:00'}`;
 
     let statusHtml = '';
     let cardClass = 'bg-white border-slate-200';
@@ -349,11 +351,13 @@ async function renderManagerHome() {
       statusHtml = `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">✅ Sudah diisi ${new Date(j.jam_submit).toLocaleTimeString('id-ID').slice(0,5)}${j.is_late ? ' (telat)' : ''}</span>`;
       cardClass = 'bg-green-50 border-green-200';
       clickAction = `toast('Jurnal cabang ini sudah diisi hari ini.', 'info')`;
-    } else if (lewat) {
-      statusHtml = `<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">❌ Lewat deadline ${c.jam_deadline}</span>`;
+    } else if (now > jamAkhir) {
+      statusHtml = `<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">❌ Lewat jam kunjungan (${rentang})</span>`;
       cardClass = 'bg-yellow-50 border-yellow-200';
+    } else if (now < jamMulai) {
+      statusHtml = `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">⏳ Belum waktunya (jadwal: ${rentang})</span>`;
     } else {
-      statusHtml = `<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">⏰ Deadline: ${c.jam_deadline}</span>`;
+      statusHtml = `<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">🕐 Jadwal kunjungan: ${rentang}</span>`;
     }
 
     return `
@@ -472,17 +476,19 @@ async function openCamera(section) {
 
   const modal = document.createElement('div');
   modal.id = 'camModal';
-  modal.className = 'fixed inset-0 bg-black z-50 flex flex-col';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:9999;display:flex;flex-direction:column';
   modal.innerHTML = `
-    <div class="p-4 flex justify-between items-center text-white">
-      <button onclick="closeCamera()" class="text-2xl">✕</button>
-      <div class="text-sm">${SECTION_LABELS[section]}</div>
-      <div class="w-6"></div>
+    <div style="padding:16px;display:flex;justify-content:space-between;align-items:center;color:white;background:rgba(0,0,0,0.6);flex-shrink:0">
+      <button onclick="closeCamera()" style="font-size:28px;color:white;background:none;border:none;padding:4px 12px">✕</button>
+      <div style="font-size:14px;font-weight:600">${SECTION_LABELS[section]}</div>
+      <div style="width:40px"></div>
     </div>
-    <video id="camVideo" autoplay playsinline class="flex-1 w-full object-cover"></video>
-    <canvas id="camCanvas" class="hidden"></canvas>
-    <div class="p-6 flex justify-center">
-      <button onclick="capturePhoto()" class="w-16 h-16 bg-white rounded-full border-4 border-slate-300 active:scale-95"></button>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0">
+      <video id="camVideo" autoplay playsinline muted style="max-width:100%;max-height:100%;object-fit:contain"></video>
+    </div>
+    <canvas id="camCanvas" style="display:none"></canvas>
+    <div style="padding:24px;display:flex;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);flex-shrink:0">
+      <button onclick="capturePhoto()" style="width:80px;height:80px;background:white;border-radius:50%;border:5px solid #cbd5e1;font-size:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.5)">📷</button>
     </div>
   `;
   document.body.appendChild(modal);
@@ -618,11 +624,11 @@ async function submitJurnal() {
     checklistData[el.dataset.section][el.dataset.idx] = el.checked;
   });
 
-  // Cek deadline
+  // Cek apakah lewat jam kunjungan akhir
   const now = new Date();
-  const [dh, dm] = currentCabang.jam_deadline.split(':');
-  const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
-  const isLate = now > deadline;
+  const [ah, am] = (currentCabang.jam_kunjungan_akhir || '18:00').split(':');
+  const jamAkhir = new Date(); jamAkhir.setHours(+ah, +am, 0, 0);
+  const isLate = now > jamAkhir;
 
   const lokasi = window._lokasiSubmit;
 
@@ -735,13 +741,17 @@ async function loadDashboardData() {
   const list = $('dashboard_list');
   list.innerHTML = cabangs.map(cab => {
     const j = jurnalMap[cab.id];
-    const [dh, dm] = cab.jam_deadline.split(':');
-    const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
-    const lewatDeadline = now > deadline;
+    const [mh, mm] = (cab.jam_kunjungan_mulai || '12:30').split(':');
+    const [ah, am] = (cab.jam_kunjungan_akhir || '18:00').split(':');
+    const jamMulai = new Date(); jamMulai.setHours(+mh, +mm, 0, 0);
+    const jamAkhir = new Date(); jamAkhir.setHours(+ah, +am, 0, 0);
+    const lewatJam = now > jamAkhir;
+    const rentang = `${cab.jam_kunjungan_mulai || '12:30'} - ${cab.jam_kunjungan_akhir || '18:00'}`;
 
     let status, bg, badge;
     if (!j) {
-      if (lewatDeadline) { status = '❌ Belum Mengisi'; bg = 'bg-red-50 border-red-200'; badge = 'bg-red-600'; }
+      if (lewatJam) { status = '❌ Belum Mengisi'; bg = 'bg-red-50 border-red-200'; badge = 'bg-red-600'; }
+      else if (now < jamMulai) { status = '⏳ Belum Waktunya'; bg = 'bg-blue-50 border-blue-200'; badge = 'bg-blue-500'; }
       else { status = '⏳ Belum Isi'; bg = 'bg-yellow-50 border-yellow-200'; badge = 'bg-yellow-500'; }
     } else if (j.is_late) {
       status = '⚠️ Terlambat'; bg = 'bg-orange-50 border-orange-200'; badge = 'bg-orange-500';
@@ -766,7 +776,7 @@ async function loadDashboardData() {
         <div class="flex justify-between items-start">
           <div>
             <p class="font-bold">${cab.nama}</p>
-            <p class="text-xs text-slate-500 mt-0.5">Deadline: ${cab.jam_deadline}</p>
+            <p class="text-xs text-slate-500 mt-0.5">Jadwal: ${rentang}</p>
           </div>
           <span class="${badge} text-white text-xs px-2 py-1 rounded-full font-medium">${status}</span>
         </div>
@@ -893,9 +903,14 @@ async function renderSetupCabang() {
                 <label class="text-xs text-slate-500">Radius (m)</label>
                 <input id="rad_${c.id}" type="number" value="${c.radius_meter}" class="w-full px-2 py-1.5 border rounded"/>
               </div>
+              <div></div>
               <div>
-                <label class="text-xs text-slate-500">Deadline</label>
-                <input id="dl_${c.id}" type="time" value="${c.jam_deadline}" class="w-full px-2 py-1.5 border rounded"/>
+                <label class="text-xs text-slate-500">Jam Kunjungan Mulai</label>
+                <input id="jm_${c.id}" type="time" value="${c.jam_kunjungan_mulai || '12:30'}" class="w-full px-2 py-1.5 border rounded"/>
+              </div>
+              <div>
+                <label class="text-xs text-slate-500">Jam Kunjungan Akhir</label>
+                <input id="ja_${c.id}" type="time" value="${c.jam_kunjungan_akhir || '18:00'}" class="w-full px-2 py-1.5 border rounded"/>
               </div>
             </div>
             <div class="flex gap-2">
@@ -937,7 +952,8 @@ async function simpanCabang(cabangId) {
     latitude: +$(`lat_${cabangId}`).value,
     longitude: +$(`lng_${cabangId}`).value,
     radius_meter: +$(`rad_${cabangId}`).value,
-    jam_deadline: $(`dl_${cabangId}`).value
+    jam_kunjungan_mulai: $(`jm_${cabangId}`).value,
+    jam_kunjungan_akhir: $(`ja_${cabangId}`).value
   }).eq('id', cabangId);
 
   if (error) return toast('Gagal simpan: ' + error.message, 'error');
@@ -952,14 +968,48 @@ async function tambahManager() {
   if (!email || !password || !nama) return toast('Semua field wajib diisi', 'error');
   if (password.length < 6) return toast('Password minimal 6 karakter', 'error');
 
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if (error) return toast('Gagal daftar: ' + error.message, 'error');
+  // 1. Simpan session owner supaya bisa dipulihkan
+  const { data: ownerSession } = await sb.auth.getSession();
+  if (!ownerSession || !ownerSession.session) {
+    return toast('Session owner hilang. Login ulang.', 'error');
+  }
+  const savedTokens = {
+    access_token: ownerSession.session.access_token,
+    refresh_token: ownerSession.session.refresh_token
+  };
 
+  toast('Membuat akun manager...', 'info');
+
+  // 2. Buat user manager baru (ini akan switch session ke manager)
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) {
+    // Balikin session owner sebelum keluar
+    await sb.auth.setSession(savedTokens);
+    return toast('Gagal daftar: ' + error.message, 'error');
+  }
+
+  if (!data.user) {
+    await sb.auth.setSession(savedTokens);
+    return toast('User tidak terbuat. Coba lagi.', 'error');
+  }
+
+  const managerId = data.user.id;
+
+  // 3. Balikin session ke owner
+  const { error: restoreErr } = await sb.auth.setSession(savedTokens);
+  if (restoreErr) {
+    return toast('Manager dibuat tapi session owner gagal pulih. Login ulang.', 'warn');
+  }
+
+  // 4. Insert profile manager (sekarang user yang login owner lagi)
   const { error: pErr } = await sb.from('profiles').insert({
-    id: data.user.id, nama, role: 'manager', cabang_id: null
+    id: managerId, nama, role: 'manager', cabang_id: null
   });
 
-  if (pErr) return toast('Profile error: ' + pErr.message, 'error');
+  if (pErr) {
+    return toast('User dibuat tapi profile gagal: ' + pErr.message, 'error');
+  }
+
   toast('Manager berhasil didaftarkan ✅', 'success');
   $('new_email').value = ''; $('new_password').value = ''; $('new_nama').value = '';
 }
