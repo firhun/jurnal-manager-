@@ -1,1 +1,1 @@
-# jurnal-manager- 
+# jurnal-manager-  
