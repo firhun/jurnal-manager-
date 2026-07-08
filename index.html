@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Jurnal Manager AWW</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .fade-in { animation: fade 0.2s ease-in; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .video-preview { max-height: 60vh; }
+  input[type=checkbox] { width: 22px; height: 22px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+<div id="app">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#666">
+    <div style="text-align:center">
+      <div style="font-size:48px;margin-bottom:16px">📋</div>
+      <div style="font-size:18px;font-weight:bold">Memuat Jurnal Manager...</div>
+      <div style="font-size:14px;margin-top:8px;color:#999">Tunggu sebentar</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Global error handler - tampilin error langsung di layar
+window.addEventListener('error', function(e) {
+  document.getElementById('app').innerHTML = `
+    <div style="min-height:100vh;padding:20px;font-family:sans-serif;background:#fee">
+      <div style="max-width:600px;margin:40px auto;background:white;padding:20px;border-radius:12px;border:2px solid #f88">
+        <h1 style="color:#c00;font-size:20px;margin-bottom:12px">⚠️ Ada Error</h1>
+        <div style="background:#fee;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;word-break:break-all">
+          <b>Pesan:</b> ${e.message}<br><br>
+          <b>File:</b> ${e.filename || 'unknown'}<br>
+          <b>Baris:</b> ${e.lineno || '?'}
+        </div>
+        <p style="margin-top:12px;font-size:13px;color:#666">Screenshot pesan ini dan kirim ke Claude untuk didebug.</p>
+      </div>
+    </div>
+  `;
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+  document.getElementById('app').innerHTML = `
+    <div style="min-height:100vh;padding:20px;font-family:sans-serif;background:#fee">
+      <div style="max-width:600px;margin:40px auto;background:white;padding:20px;border-radius:12px;border:2px solid #f88">
+        <h1 style="color:#c00;font-size:20px;margin-bottom:12px">⚠️ Ada Error (Promise)</h1>
+        <div style="background:#fee;padding:12px;border-radius:8px;font-family:monospace;font-size:12px;word-break:break-all">
+          ${e.reason ? (e.reason.message || e.reason.toString()) : 'unknown'}
+        </div>
+        <p style="margin-top:12px;font-size:13px;color:#666">Screenshot pesan ini dan kirim ke Claude untuk didebug.</p>
+      </div>
+    </div>
+  `;
+});
+
+// Cek apakah CDN Supabase & Tailwind sudah load
+setTimeout(function() {
+  if (typeof window.supabase === 'undefined') {
+    document.getElementById('app').innerHTML = `
+      <div style="min-height:100vh;padding:20px;font-family:sans-serif;background:#fff3cd">
+        <div style="max-width:600px;margin:40px auto;background:white;padding:20px;border-radius:12px;border:2px solid #ffc107">
+          <h1 style="color:#856404;font-size:20px;margin-bottom:12px">⚠️ Supabase CDN Gagal Load</h1>
+          <p style="font-size:14px;line-height:1.6">Library Supabase gak berhasil didownload. Kemungkinan:</p>
+          <ul style="font-size:14px;line-height:1.8;padding-left:20px">
+            <li>Koneksi internet lambat/putus</li>
+            <li>Ad blocker/antivirus blokir CDN</li>
+            <li>ISP blokir jsdelivr.net</li>
+          </ul>
+          <p style="font-size:14px;margin-top:12px"><b>Coba:</b> Refresh halaman (Ctrl+F5) atau matikan ad blocker sementara.</p>
+        </div>
+      </div>
+    `;
+  }
+}, 5000);
+</script>
+
+
+<script>
+// ============================================
+// KONFIGURASI SUPABASE — GANTI DENGAN MILIKMU
+// ============================================
+const SUPABASE_URL = 'https://ielmeucksgctyibmiypa.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllbG1ldWNrc2djdHlpYm1peXBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxOTY4ODgsImV4cCI6MjA5ODc3Mjg4OH0.GGyNR6MWe5_0g5sd5WWUPHyT_ez_XHbqEP3ONkNzkKE';
+
+// Cek konfigurasi
+if (SUPABASE_URL.includes('GANTI_DENGAN') || SUPABASE_KEY.includes('GANTI_DENGAN')) {
+  document.body.innerHTML = `
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;font-family:sans-serif;background:#fef3c7">
+      <div style="max-width:500px;background:white;padding:24px;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,0.1)">
+        <div style="font-size:48px;text-align:center;margin-bottom:12px">⚙️</div>
+        <h1 style="font-size:22px;font-weight:bold;color:#92400e;text-align:center;margin-bottom:8px">Perlu Setup Dulu</h1>
+        <p style="color:#78716c;text-align:center;margin-bottom:20px;font-size:14px">
+          Aplikasi belum bisa jalan karena <b>URL & Key Supabase</b> belum diisi.
+        </p>
+        <div style="background:#f5f5f4;padding:16px;border-radius:12px;font-size:14px;line-height:1.8;color:#44403c">
+          <b>Langkah selanjutnya:</b><br>
+          1. Buka <a href="https://supabase.com/dashboard" target="_blank" style="color:#2563eb;text-decoration:underline">supabase.com/dashboard</a><br>
+          2. Buat project baru (gratis)<br>
+          3. Copy <b>Project URL</b> & <b>anon key</b> dari menu <b>Settings → API</b><br>
+          4. Edit file <code style="background:#e7e5e4;padding:2px 6px;border-radius:4px">index.html</code>, ganti 2 baris di paling atas:<br>
+          <div style="background:#1c1917;color:#fbbf24;padding:12px;border-radius:8px;margin-top:8px;font-family:monospace;font-size:12px;overflow-x:auto">
+          const SUPABASE_URL = '...';<br>
+          const SUPABASE_KEY = '...';
+          </div>
+          5. Simpan & buka lagi
+        </div>
+        <p style="text-align:center;margin-top:16px;font-size:12px;color:#a8a29e">
+          Baca PANDUAN.md untuk step by step lengkap
+        </p>
+      </div>
+    </div>
+  `;
+  throw new Error('Setup Supabase belum diisi');
+}
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ============================================
+// STATE APLIKASI
+// ============================================
+let currentUser = null;
+let currentProfile = null;
+let currentCabang = null;
+let cameraStream = null;
+let capturedPhotos = { kebersihan: [], stok: [], karyawan: [], pelayanan: [] };
+let currentPhotoSection = null;
+
+const CHECKLIST = {
+  kebersihan: [
+    'Lantai toko bersih, tidak ada debu/sampah',
+    'Kaca etalase & cermin bersih dan mengkilap',
+    'Toilet & ruang ganti bersih, wangi',
+    'Pencahayaan toko menyala semua & terang',
+    'Aroma toko segar (tidak apek/lembab)',
+    'Manekin tertata rapi',
+  ],
+  stok: [
+    'Stok barang sesuai dengan data sistem',
+    'Display sesuai planogram / tema bulan ini',
+    'Tidak ada barang kosong di rak utama',
+    'Label harga terpasang lengkap & benar',
+    'Barang baru sudah dipajang di area depan',
+    'Barang sale / promo terpisah & jelas',
+  ],
+  karyawan: [
+    'Semua karyawan datang tepat waktu',
+    'Karyawan memakai seragam lengkap',
+    'Briefing pagi dilakukan',
+    'Pembagian tugas jelas hari ini',
+    'Tidak ada karyawan main HP saat jam kerja',
+  ],
+  pelayanan: [
+    'Karyawan menyapa setiap pelanggan masuk',
+    'Karyawan sigap membantu pelanggan',
+    'Proses pembayaran cepat & ramah',
+    'Pelanggan diberi tahu promo yang berjalan',
+    'Tidak ada keluhan pelanggan hari ini',
+  ]
+};
+
+const SECTION_LABELS = {
+  kebersihan: '🧹 Kebersihan & Penataan',
+  stok: '📦 Stok & Display',
+  karyawan: '👥 Kinerja Karyawan',
+  pelayanan: '🤝 Pelayanan Pelanggan'
+};
+
+const MIN_PHOTOS = { kebersihan: 2, stok: 2, karyawan: 1, pelayanan: 1 };
+
+// ============================================
+// UTIL
+// ============================================
+const $ = (id) => document.getElementById(id);
+const render = (html) => { $('app').innerHTML = html; };
+
+function toast(msg, type='info') {
+  const colors = { info: 'bg-blue-600', success: 'bg-green-600', error: 'bg-red-600', warn: 'bg-yellow-600' };
+  const div = document.createElement('div');
+  div.className = `fixed top-4 left-4 right-4 ${colors[type]} text-white px-4 py-3 rounded-lg shadow-xl z-50 fade-in text-sm font-medium`;
+  div.textContent = msg;
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 3500);
+}
+
+// Hitung jarak dua koordinat (Haversine, meter)
+function jarakMeter(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function getLokasi() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject('GPS tidak tersedia');
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, akurasi: pos.coords.accuracy }),
+      err => reject(err.message),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+}
+
+function today() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function jamNow() {
+  const d = new Date();
+  return d.toTimeString().slice(0, 5);
+}
+
+// ============================================
+// LOGIN SCREEN
+// ============================================
+function renderLogin() {
+  render(`
+    <div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-600 to-indigo-800">
+      <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
+        <div class="text-center mb-6">
+          <div class="text-5xl mb-2">📋</div>
+          <h1 class="text-2xl font-bold text-slate-800">Jurnal Manager AWW</h1>
+          <p class="text-sm text-slate-500 mt-1">Login untuk mengisi jurnal harian</p>
+        </div>
+        <div class="space-y-3">
+          <input id="email" type="email" placeholder="Email" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          <input id="password" type="password" placeholder="Password" class="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+          <button onclick="doLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Masuk</button>
+        </div>
+        <p class="text-xs text-slate-400 text-center mt-6">Belum punya akun? Hubungi owner untuk didaftarkan.</p>
+      </div>
+    </div>
+  `);
+}
+
+async function doLogin() {
+  const email = $('email').value.trim();
+  const password = $('password').value;
+  if (!email || !password) return toast('Email & password wajib diisi', 'error');
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return toast('Login gagal: ' + error.message, 'error');
+
+  currentUser = data.user;
+  await loadProfile();
+  routeByRole();
+}
+
+async function loadProfile() {
+  const { data } = await sb.from('profiles').select('*, cabang(*)').eq('id', currentUser.id).single();
+  currentProfile = data;
+  currentCabang = data?.cabang;
+}
+
+function routeByRole() {
+  if (!currentProfile) return toast('Profil belum terdaftar. Hubungi owner.', 'error');
+  if (currentProfile.role === 'owner') renderOwnerDashboard();
+  else renderManagerHome();
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+  currentUser = null;
+  currentProfile = null;
+  currentCabang = null;
+  capturedPhotos = { kebersihan: [], stok: [], karyawan: [], pelayanan: [] };
+  renderLogin();
+}
+
+// ============================================
+// MANAGER HOME
+// ============================================
+async function renderManagerHome() {
+  // Cek apakah sudah isi jurnal hari ini
+  const { data: jurnalHariIni } = await supabase
+    .from('jurnal_harian')
+    .select('id, jam_submit, is_late')
+    .eq('cabang_id', currentCabang.id)
+    .eq('tanggal', today())
+    .maybeSingle();
+
+  const sudahIsi = !!jurnalHariIni;
+  const now = new Date();
+  const [deadHH, deadMM] = currentCabang.jam_deadline.split(':');
+  const deadline = new Date(); deadline.setHours(+deadHH, +deadMM, 0, 0);
+  const lewat = now > deadline;
+
+  render(`
+    <div class="min-h-screen pb-24">
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-lg">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="text-xs opacity-80">${currentCabang.nama}</p>
+            <p class="font-bold text-lg">${currentProfile.nama}</p>
+          </div>
+          <button onclick="doLogout()" class="text-xs bg-white/20 px-3 py-1.5 rounded-lg">Keluar</button>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <div class="bg-white rounded-xl p-4 shadow">
+          <p class="text-sm text-slate-500">Hari ini</p>
+          <p class="text-lg font-bold">${new Date().toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'})}</p>
+          <div class="mt-3 flex items-center gap-2">
+            <span class="text-xs px-2 py-1 rounded-full ${lewat && !sudahIsi ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}">
+              ⏰ Deadline: ${currentCabang.jam_deadline}
+            </span>
+          </div>
+        </div>
+
+        ${sudahIsi ? `
+          <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+            <div class="flex items-start gap-3">
+              <div class="text-3xl">✅</div>
+              <div>
+                <p class="font-bold text-green-800">Jurnal hari ini sudah disubmit</p>
+                <p class="text-sm text-green-700 mt-1">Submit pada: ${new Date(jurnalHariIni.jam_submit).toLocaleTimeString('id-ID')}</p>
+                ${jurnalHariIni.is_late ? '<p class="text-xs text-red-600 mt-1">⚠️ Terlambat dari deadline</p>' : ''}
+              </div>
+            </div>
+          </div>
+        ` : `
+          <div class="bg-white rounded-xl p-4 shadow">
+            <h3 class="font-bold text-slate-800 mb-3">Cek yang Wajib Dilakukan</h3>
+            <ul class="text-sm space-y-2 text-slate-600">
+              <li>✓ Berada di lokasi toko (GPS aktif)</li>
+              <li>✓ Isi checklist 4 bagian</li>
+              <li>✓ Ambil foto bukti (min. 6 foto total)</li>
+              <li>✓ Submit sebelum ${currentCabang.jam_deadline}</li>
+            </ul>
+            <button onclick="renderIsiJurnal()" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">
+              📝 Mulai Isi Jurnal
+            </button>
+          </div>
+        `}
+      </div>
+    </div>
+  `);
+}
+
+// ============================================
+// FORM ISI JURNAL
+// ============================================
+function renderIsiJurnal() {
+  capturedPhotos = { kebersihan: [], stok: [], karyawan: [], pelayanan: [] };
+
+  const sections = Object.keys(CHECKLIST).map(key => {
+    const items = CHECKLIST[key].map((item, i) =>
+      `<label class="flex items-start gap-3 py-2 border-b border-slate-100 last:border-0 cursor-pointer">
+        <input type="checkbox" data-section="${key}" data-idx="${i}" class="mt-0.5 checklist-item"/>
+        <span class="text-sm flex-1">${item}</span>
+      </label>`
+    ).join('');
+
+    return `
+      <div class="bg-white rounded-xl p-4 shadow">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="font-bold">${SECTION_LABELS[key]}</h3>
+          <span class="text-xs text-slate-500">Min. ${MIN_PHOTOS[key]} foto</span>
+        </div>
+        <div class="space-y-0">${items}</div>
+        <button onclick="openCamera('${key}')" class="mt-3 w-full border-2 border-dashed border-blue-300 text-blue-600 py-2 rounded-lg font-medium text-sm hover:bg-blue-50">
+          📷 Ambil Foto <span id="count-${key}" class="ml-1 text-xs">(0/${MIN_PHOTOS[key]})</span>
+        </button>
+        <div id="preview-${key}" class="grid grid-cols-3 gap-2 mt-2"></div>
+      </div>
+    `;
+  }).join('');
+
+  render(`
+    <div class="min-h-screen pb-32">
+      <div class="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+        <button onclick="renderManagerHome()" class="text-slate-600">← </button>
+        <div>
+          <h2 class="font-bold">Isi Jurnal Hari Ini</h2>
+          <p class="text-xs text-slate-500">${currentCabang.nama} • ${new Date().toLocaleDateString('id-ID')}</p>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <div class="bg-white rounded-xl p-4 shadow">
+          <h3 class="font-bold mb-3">📋 Data Awal</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="text-sm font-medium text-slate-700">Jam Datang</label>
+              <input id="jam_datang" type="time" value="${jamNow()}" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg"/>
+            </div>
+            <div>
+              <label class="text-sm font-medium text-slate-700">Jumlah Karyawan Hari Ini</label>
+              <input id="jumlah_karyawan" type="number" min="0" placeholder="0" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg"/>
+            </div>
+          </div>
+        </div>
+
+        ${sections}
+
+        <div class="bg-white rounded-xl p-4 shadow">
+          <label class="text-sm font-bold">Catatan / Kendala Hari Ini</label>
+          <textarea id="catatan" rows="3" placeholder="Contoh: AC ruang ganti rusak, stok kaos putih M habis..." class="w-full mt-2 px-3 py-2 border border-slate-300 rounded-lg text-sm"></textarea>
+        </div>
+      </div>
+
+      <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-2xl">
+        <button id="btnSubmit" onclick="submitJurnal()" class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-lg cursor-not-allowed" disabled>
+          🔒 Cek lokasi & lengkapi foto dulu
+        </button>
+        <p id="submitStatus" class="text-xs text-center mt-1 text-slate-500">Foto belum lengkap</p>
+      </div>
+    </div>
+  `);
+
+  // Auto cek foto & lokasi
+  cekKesiapanSubmit();
+}
+
+// ============================================
+// KAMERA IN-APP
+// ============================================
+async function openCamera(section) {
+  currentPhotoSection = section;
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  } catch (e) {
+    return toast('Tidak bisa akses kamera: ' + e.message, 'error');
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'camModal';
+  modal.className = 'fixed inset-0 bg-black z-50 flex flex-col';
+  modal.innerHTML = `
+    <div class="p-4 flex justify-between items-center text-white">
+      <button onclick="closeCamera()" class="text-2xl">✕</button>
+      <div class="text-sm">${SECTION_LABELS[section]}</div>
+      <div class="w-6"></div>
+    </div>
+    <video id="camVideo" autoplay playsinline class="flex-1 w-full object-cover"></video>
+    <canvas id="camCanvas" class="hidden"></canvas>
+    <div class="p-6 flex justify-center">
+      <button onclick="capturePhoto()" class="w-16 h-16 bg-white rounded-full border-4 border-slate-300 active:scale-95"></button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  $('camVideo').srcObject = cameraStream;
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  const m = $('camModal');
+  if (m) m.remove();
+}
+
+function capturePhoto() {
+  const video = $('camVideo');
+  const canvas = $('camCanvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  // Watermark
+  const timestamp = new Date().toLocaleString('id-ID');
+  const wmText = `${currentCabang.nama} • ${timestamp}`;
+  const fontSize = Math.max(16, canvas.width / 50);
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  const textW = ctx.measureText(wmText).width;
+  const padding = 12;
+
+  // Background hitam transparan
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(canvas.width - textW - padding * 2 - 8, canvas.height - fontSize - padding * 2 - 8, textW + padding * 2, fontSize + padding * 2);
+
+  // Text putih
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'top';
+  ctx.fillText(wmText, canvas.width - textW - padding - 8, canvas.height - fontSize - padding - 8);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+  capturedPhotos[currentPhotoSection].push(dataUrl);
+
+  updatePhotoPreview(currentPhotoSection);
+  closeCamera();
+  cekKesiapanSubmit();
+  toast('Foto tersimpan', 'success');
+}
+
+function updatePhotoPreview(section) {
+  const preview = $(`preview-${section}`);
+  const count = $(`count-${section}`);
+  if (!preview) return;
+
+  preview.innerHTML = capturedPhotos[section].map((url, i) => `
+    <div class="relative">
+      <img src="${url}" class="w-full h-20 object-cover rounded-lg"/>
+      <button onclick="hapusFoto('${section}', ${i})" class="absolute top-1 right-1 bg-red-600 text-white w-6 h-6 rounded-full text-xs">✕</button>
+    </div>
+  `).join('');
+
+  const c = capturedPhotos[section].length;
+  const min = MIN_PHOTOS[section];
+  count.textContent = `(${c}/${min})`;
+  count.className = c >= min ? 'ml-1 text-xs text-green-600 font-bold' : 'ml-1 text-xs';
+}
+
+function hapusFoto(section, idx) {
+  capturedPhotos[section].splice(idx, 1);
+  updatePhotoPreview(section);
+  cekKesiapanSubmit();
+}
+
+// ============================================
+// CEK KESIAPAN SUBMIT
+// ============================================
+async function cekKesiapanSubmit() {
+  const btn = $('btnSubmit');
+  const status = $('submitStatus');
+  if (!btn) return;
+
+  // Cek foto minimum
+  const semuaFotoOK = Object.keys(MIN_PHOTOS).every(k => capturedPhotos[k].length >= MIN_PHOTOS[k]);
+  if (!semuaFotoOK) {
+    btn.disabled = true;
+    btn.className = 'w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-lg cursor-not-allowed';
+    btn.textContent = '📷 Lengkapi foto minimum';
+    status.textContent = 'Foto belum lengkap sesuai minimum';
+    return;
+  }
+
+  // Cek GPS
+  status.textContent = '📍 Mengecek lokasi...';
+  try {
+    const lokasi = await getLokasi();
+    const jarak = jarakMeter(lokasi.lat, lokasi.lng, currentCabang.latitude, currentCabang.longitude);
+    window._lokasiSubmit = { ...lokasi, jarak };
+
+    if (jarak > currentCabang.radius_meter) {
+      btn.disabled = true;
+      btn.className = 'w-full bg-red-500 text-white font-bold py-3 rounded-lg cursor-not-allowed';
+      btn.textContent = '🔒 Di luar area toko';
+      status.textContent = `Jarak dari toko: ${Math.round(jarak)}m (maks ${currentCabang.radius_meter}m)`;
+      status.className = 'text-xs text-center mt-1 text-red-600 font-medium';
+      return;
+    }
+
+    btn.disabled = false;
+    btn.className = 'w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg';
+    btn.textContent = '✅ Submit Jurnal';
+    status.textContent = `📍 Di lokasi toko (${Math.round(jarak)}m dari titik pusat)`;
+    status.className = 'text-xs text-center mt-1 text-green-600';
+  } catch (e) {
+    btn.disabled = true;
+    btn.className = 'w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-lg cursor-not-allowed';
+    btn.textContent = '📍 GPS tidak aktif';
+    status.textContent = 'Aktifkan GPS di HP dulu';
+    status.className = 'text-xs text-center mt-1 text-red-600';
+  }
+}
+
+// ============================================
+// SUBMIT JURNAL
+// ============================================
+async function submitJurnal() {
+  const btn = $('btnSubmit');
+  btn.disabled = true;
+  btn.textContent = '⏳ Menyimpan...';
+
+  // Kumpulkan checklist
+  const checklistData = { kebersihan: {}, stok: {}, karyawan: {}, pelayanan: {} };
+  document.querySelectorAll('.checklist-item').forEach(el => {
+    checklistData[el.dataset.section][el.dataset.idx] = el.checked;
+  });
+
+  // Cek deadline
+  const now = new Date();
+  const [dh, dm] = currentCabang.jam_deadline.split(':');
+  const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
+  const isLate = now > deadline;
+
+  const lokasi = window._lokasiSubmit;
+
+  // Insert jurnal
+  const { data: jurnal, error } = await sb.from('jurnal_harian').insert({
+    cabang_id: currentCabang.id,
+    manager_id: currentProfile.id,
+    tanggal: today(),
+    jam_datang: $('jam_datang').value,
+    jumlah_karyawan: +$('jumlah_karyawan').value || 0,
+    checklist_kebersihan: checklistData.kebersihan,
+    checklist_stok: checklistData.stok,
+    checklist_karyawan: checklistData.karyawan,
+    checklist_pelayanan: checklistData.pelayanan,
+    catatan: $('catatan').value,
+    submit_lat: lokasi.lat,
+    submit_lng: lokasi.lng,
+    jarak_meter: lokasi.jarak,
+    is_late: isLate
+  }).select().single();
+
+  if (error) {
+    toast('Gagal simpan: ' + error.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✅ Submit Jurnal';
+    return;
+  }
+
+  // Upload foto
+  btn.textContent = '📤 Upload foto...';
+  for (const section of Object.keys(capturedPhotos)) {
+    for (let i = 0; i < capturedPhotos[section].length; i++) {
+      const blob = await (await fetch(capturedPhotos[section][i])).blob();
+      const path = `${today()}/${currentCabang.id}/${section}_${i}_${Date.now()}.jpg`;
+      const { error: upErr } = await sb.storage.from('foto-jurnal').upload(path, blob, { contentType: 'image/jpeg' });
+      if (!upErr) {
+        await sb.from('foto_jurnal').insert({ jurnal_id: jurnal.id, section, storage_path: path });
+      }
+    }
+  }
+
+  toast('Jurnal berhasil disubmit! ✅', 'success');
+  setTimeout(renderManagerHome, 1000);
+}
+
+// ============================================
+// DASHBOARD OWNER
+// ============================================
+async function renderOwnerDashboard() {
+  render(`
+    <div class="min-h-screen">
+      <div class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-4 shadow-lg">
+        <div class="flex justify-between items-center">
+          <div>
+            <p class="text-xs opacity-80">Dashboard Owner</p>
+            <p class="font-bold text-lg">${currentProfile.nama}</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="renderSetupCabang()" class="text-xs bg-white/20 px-3 py-1.5 rounded-lg">⚙️ Setup</button>
+            <button onclick="doLogout()" class="text-xs bg-white/20 px-3 py-1.5 rounded-lg">Keluar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-lg">Status Hari Ini</h2>
+          <input id="tanggal_filter" type="date" value="${today()}" onchange="loadDashboardData()" class="px-3 py-1.5 border rounded-lg text-sm"/>
+        </div>
+        <div id="dashboard_list" class="space-y-3">
+          <div class="text-center text-slate-400 py-8">Memuat...</div>
+        </div>
+      </div>
+    </div>
+  `);
+
+  loadDashboardData();
+}
+
+async function loadDashboardData() {
+  const tgl = $('tanggal_filter').value;
+  const { data: cabangs } = await sb.from('cabang').select('*').eq('aktif', true).order('nama');
+  const { data: jurnals } = await sb.from('jurnal_harian')
+    .select('*, profiles(nama), foto_jurnal(id)')
+    .eq('tanggal', tgl);
+
+  const jurnalMap = {};
+  (jurnals || []).forEach(j => { jurnalMap[j.cabang_id] = j; });
+
+  const now = new Date();
+  const list = $('dashboard_list');
+  list.innerHTML = cabangs.map(cab => {
+    const j = jurnalMap[cab.id];
+    const [dh, dm] = cab.jam_deadline.split(':');
+    const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
+    const lewatDeadline = now > deadline;
+
+    let status, bg, badge;
+    if (!j) {
+      if (lewatDeadline) { status = '❌ Belum Mengisi'; bg = 'bg-red-50 border-red-200'; badge = 'bg-red-600'; }
+      else { status = '⏳ Belum Isi'; bg = 'bg-yellow-50 border-yellow-200'; badge = 'bg-yellow-500'; }
+    } else if (j.is_late) {
+      status = '⚠️ Terlambat'; bg = 'bg-orange-50 border-orange-200'; badge = 'bg-orange-500';
+    } else {
+      status = '✅ On Time'; bg = 'bg-green-50 border-green-200'; badge = 'bg-green-600';
+    }
+
+    // Hitung completion checklist
+    let completion = '';
+    if (j) {
+      const total = Object.values(CHECKLIST).flat().length;
+      let done = 0;
+      ['kebersihan','stok','karyawan','pelayanan'].forEach(k => {
+        const cl = j[`checklist_${k}`] || {};
+        Object.values(cl).forEach(v => v === true && done++);
+      });
+      completion = `${done}/${total} (${Math.round(done/total*100)}%)`;
+    }
+
+    return `
+      <div class="${bg} border rounded-xl p-4 cursor-pointer" onclick="${j ? `renderDetailJurnal('${j.id}')` : ''}">
+        <div class="flex justify-between items-start">
+          <div>
+            <p class="font-bold">${cab.nama}</p>
+            <p class="text-xs text-slate-500 mt-0.5">Deadline: ${cab.jam_deadline}</p>
+          </div>
+          <span class="${badge} text-white text-xs px-2 py-1 rounded-full font-medium">${status}</span>
+        </div>
+        ${j ? `
+          <div class="mt-3 text-sm space-y-1">
+            <p>👤 ${j.profiles?.nama || '-'}</p>
+            <p>🕐 Submit: ${new Date(j.jam_submit).toLocaleTimeString('id-ID')}</p>
+            <p>📊 Checklist: ${completion}</p>
+            <p>📷 Foto: ${j.foto_jurnal.length}</p>
+            <p>📍 Jarak dari toko: ${Math.round(j.jarak_meter || 0)}m</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ============================================
+// DETAIL JURNAL (untuk owner)
+// ============================================
+async function renderDetailJurnal(jurnalId) {
+  render(`<div class="p-4 text-center text-slate-400">Memuat...</div>`);
+
+  const { data: j } = await sb.from('jurnal_harian')
+    .select('*, profiles(nama), cabang(nama), foto_jurnal(*)').eq('id', jurnalId).single();
+
+  if (!j) return toast('Data tidak ditemukan', 'error');
+
+  const checklistHtml = ['kebersihan','stok','karyawan','pelayanan'].map(k => {
+    const cl = j[`checklist_${k}`] || {};
+    const items = CHECKLIST[k].map((item, i) =>
+      `<div class="flex items-start gap-2 py-1 text-sm">
+        <span>${cl[i] === true ? '✅' : '❌'}</span>
+        <span class="${cl[i] === true ? '' : 'text-slate-500 line-through'}">${item}</span>
+      </div>`
+    ).join('');
+    return `<div class="bg-white rounded-xl p-4 shadow">
+      <h3 class="font-bold mb-2">${SECTION_LABELS[k]}</h3>
+      ${items}
+    </div>`;
+  }).join('');
+
+  const fotos = j.foto_jurnal || [];
+  const fotoHtml = fotos.length ? fotos.map(f => {
+    const { data } = sb.storage.from('foto-jurnal').getPublicUrl(f.storage_path);
+    return `<a href="${data.publicUrl}" target="_blank"><img src="${data.publicUrl}" class="w-full h-32 object-cover rounded-lg"/></a>`;
+  }).join('') : '<p class="text-slate-500 text-sm">Tidak ada foto</p>';
+
+  render(`
+    <div class="min-h-screen pb-8">
+      <div class="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+        <button onclick="renderOwnerDashboard()" class="text-slate-600">← </button>
+        <div>
+          <h2 class="font-bold">${j.cabang.nama}</h2>
+          <p class="text-xs text-slate-500">${new Date(j.tanggal).toLocaleDateString('id-ID', {weekday:'long', day:'numeric', month:'long'})}</p>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <div class="bg-white rounded-xl p-4 shadow">
+          <h3 class="font-bold mb-2">Info Submit</h3>
+          <div class="text-sm space-y-1">
+            <p>👤 Diisi oleh: <b>${j.profiles.nama}</b></p>
+            <p>🕐 Jam datang: ${j.jam_datang || '-'}</p>
+            <p>🕐 Jam submit: ${new Date(j.jam_submit).toLocaleTimeString('id-ID')} ${j.is_late ? '<span class="text-red-600 font-bold">(TERLAMBAT)</span>' : '<span class="text-green-600 font-bold">(ON TIME)</span>'}</p>
+            <p>👥 Karyawan: ${j.jumlah_karyawan}</p>
+            <p>📍 Jarak dari toko: ${Math.round(j.jarak_meter || 0)}m</p>
+          </div>
+        </div>
+
+        ${checklistHtml}
+
+        <div class="bg-white rounded-xl p-4 shadow">
+          <h3 class="font-bold mb-2">📷 Foto Bukti (${fotos.length})</h3>
+          <div class="grid grid-cols-2 gap-2">${fotoHtml}</div>
+        </div>
+
+        ${j.catatan ? `
+          <div class="bg-white rounded-xl p-4 shadow">
+            <h3 class="font-bold mb-2">📝 Catatan</h3>
+            <p class="text-sm">${j.catatan}</p>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `);
+}
+
+// ============================================
+// SETUP CABANG (untuk owner)
+// ============================================
+async function renderSetupCabang() {
+  const { data: cabangs } = await sb.from('cabang').select('*').order('nama');
+
+  render(`
+    <div class="min-h-screen pb-8">
+      <div class="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+        <button onclick="renderOwnerDashboard()" class="text-slate-600">← </button>
+        <h2 class="font-bold">⚙️ Setup Cabang</h2>
+      </div>
+
+      <div class="p-4 space-y-3">
+        <p class="text-sm text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          💡 Cara set koordinat: pergi ke cabang, buka setup dari HP, tekan tombol <b>"Ambil lokasi saat ini"</b>. Radius default 100m biasanya cukup.
+        </p>
+        ${cabangs.map(c => `
+          <div class="bg-white rounded-xl p-4 shadow space-y-3">
+            <div class="flex justify-between items-center">
+              <p class="font-bold">${c.nama}</p>
+              <span class="text-xs ${c.latitude != 0 ? 'text-green-600' : 'text-red-600'}">
+                ${c.latitude != 0 ? '✅ Terkonfigurasi' : '⚠️ Belum di-set'}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <label class="text-xs text-slate-500">Latitude</label>
+                <input id="lat_${c.id}" type="number" step="any" value="${c.latitude}" class="w-full px-2 py-1.5 border rounded"/>
+              </div>
+              <div>
+                <label class="text-xs text-slate-500">Longitude</label>
+                <input id="lng_${c.id}" type="number" step="any" value="${c.longitude}" class="w-full px-2 py-1.5 border rounded"/>
+              </div>
+              <div>
+                <label class="text-xs text-slate-500">Radius (m)</label>
+                <input id="rad_${c.id}" type="number" value="${c.radius_meter}" class="w-full px-2 py-1.5 border rounded"/>
+              </div>
+              <div>
+                <label class="text-xs text-slate-500">Deadline</label>
+                <input id="dl_${c.id}" type="time" value="${c.jam_deadline}" class="w-full px-2 py-1.5 border rounded"/>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="ambilLokasi('${c.id}')" class="flex-1 bg-blue-100 text-blue-700 py-2 rounded-lg text-sm font-medium">📍 Ambil lokasi</button>
+              <button onclick="simpanCabang('${c.id}')" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-medium">💾 Simpan</button>
+            </div>
+          </div>
+        `).join('')}
+
+        <div class="bg-white rounded-xl p-4 shadow">
+          <h3 class="font-bold mb-2">➕ Daftarkan Akun Manager Baru</h3>
+          <p class="text-xs text-slate-500 mb-3">Owner masukkan email & password sementara, manager ganti sendiri nanti.</p>
+          <div class="space-y-2">
+            <input id="new_email" type="email" placeholder="Email (contoh: talun@aww.local)" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+            <input id="new_password" type="text" placeholder="Password sementara" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+            <input id="new_nama" type="text" placeholder="Nama manager" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+            <select id="new_cabang" class="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">-- Pilih cabang --</option>
+              ${cabangs.map(c => `<option value="${c.id}">${c.nama}</option>`).join('')}
+            </select>
+            <button onclick="tambahManager()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold">Daftarkan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+async function ambilLokasi(cabangId) {
+  toast('Mengambil GPS...', 'info');
+  try {
+    const lok = await getLokasi();
+    $(`lat_${cabangId}`).value = lok.lat;
+    $(`lng_${cabangId}`).value = lok.lng;
+    toast(`Lokasi diambil (akurasi ${Math.round(lok.akurasi)}m)`, 'success');
+  } catch (e) {
+    toast('Gagal ambil lokasi: ' + e, 'error');
+  }
+}
+
+async function simpanCabang(cabangId) {
+  const { error } = await sb.from('cabang').update({
+    latitude: +$(`lat_${cabangId}`).value,
+    longitude: +$(`lng_${cabangId}`).value,
+    radius_meter: +$(`rad_${cabangId}`).value,
+    jam_deadline: $(`dl_${cabangId}`).value
+  }).eq('id', cabangId);
+
+  if (error) return toast('Gagal simpan: ' + error.message, 'error');
+  toast('Tersimpan ✅', 'success');
+}
+
+async function tambahManager() {
+  const email = $('new_email').value.trim();
+  const password = $('new_password').value.trim();
+  const nama = $('new_nama').value.trim();
+  const cabangId = $('new_cabang').value;
+
+  if (!email || !password || !nama || !cabangId) return toast('Semua field wajib diisi', 'error');
+  if (password.length < 6) return toast('Password minimal 6 karakter', 'error');
+
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) return toast('Gagal daftar: ' + error.message, 'error');
+
+  const { error: pErr } = await sb.from('profiles').insert({
+    id: data.user.id, nama, role: 'manager', cabang_id: cabangId
+  });
+
+  if (pErr) return toast('Profile error: ' + pErr.message, 'error');
+  toast('Manager berhasil didaftarkan ✅', 'success');
+  $('new_email').value = ''; $('new_password').value = ''; $('new_nama').value = '';
+}
+
+// ============================================
+// INIT
+// ============================================
+(async () => {
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) {
+      currentUser = data.session.user;
+      await loadProfile();
+      if (currentProfile) return routeByRole();
+    }
+  } catch (e) {
+    console.error('Init error:', e);
+  }
+  renderLogin();
+})();
+</script>
+</body>
+</html>
