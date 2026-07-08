@@ -200,10 +200,17 @@ function jarakMeter(lat1, lng1, lat2, lng2) {
 
 function getLokasi() {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject('GPS tidak tersedia');
+    if (!navigator.geolocation) return reject('GPS tidak tersedia di browser ini');
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, akurasi: pos.coords.accuracy }),
-      err => reject(err.message),
+      err => {
+        const msgs = {
+          1: 'Izin GPS ditolak. Aktifkan izin lokasi di setting browser.',
+          2: 'GPS tidak bisa dapat sinyal. Coba di luar ruangan.',
+          3: 'GPS timeout. Coba lagi.'
+        };
+        reject(msgs[err.code] || ('GPS error: ' + (err.message || err.code)));
+      },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
@@ -256,9 +263,10 @@ async function doLogin() {
 }
 
 async function loadProfile() {
-  const { data } = await sb.from('profiles').select('*, cabang(*)').eq('id', currentUser.id).single();
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
   currentProfile = data;
-  currentCabang = data?.cabang;
+  // Manager tidak lagi terikat ke 1 cabang, currentCabang di-set saat pilih cabang
+  currentCabang = null;
 }
 
 function routeByRole() {
@@ -277,74 +285,101 @@ async function doLogout() {
 }
 
 // ============================================
-// MANAGER HOME
+// MANAGER HOME - Pilih Cabang
 // ============================================
 async function renderManagerHome() {
-  // Cek apakah sudah isi jurnal hari ini
-  const { data: jurnalHariIni } = await supabase
-    .from('jurnal_harian')
-    .select('id, jam_submit, is_late')
-    .eq('cabang_id', currentCabang.id)
-    .eq('tanggal', today())
-    .maybeSingle();
-
-  const sudahIsi = !!jurnalHariIni;
-  const now = new Date();
-  const [deadHH, deadMM] = currentCabang.jam_deadline.split(':');
-  const deadline = new Date(); deadline.setHours(+deadHH, +deadMM, 0, 0);
-  const lewat = now > deadline;
+  currentCabang = null;
 
   render(`
-    <div class="min-h-screen pb-24">
+    <div class="min-h-screen pb-8">
       <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-lg">
         <div class="flex justify-between items-start">
           <div>
-            <p class="text-xs opacity-80">${currentCabang.nama}</p>
+            <p class="text-xs opacity-80">Manager Toko</p>
             <p class="font-bold text-lg">${currentProfile.nama}</p>
           </div>
           <button onclick="doLogout()" class="text-xs bg-white/20 px-3 py-1.5 rounded-lg">Keluar</button>
         </div>
       </div>
 
-      <div class="p-4 space-y-4">
-        <div class="bg-white rounded-xl p-4 shadow">
+      <div class="p-4">
+        <div class="mb-4">
           <p class="text-sm text-slate-500">Hari ini</p>
           <p class="text-lg font-bold">${new Date().toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'})}</p>
-          <div class="mt-3 flex items-center gap-2">
-            <span class="text-xs px-2 py-1 rounded-full ${lewat && !sudahIsi ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}">
-              ⏰ Deadline: ${currentCabang.jam_deadline}
-            </span>
-          </div>
         </div>
-
-        ${sudahIsi ? `
-          <div class="bg-green-50 border border-green-200 rounded-xl p-4">
-            <div class="flex items-start gap-3">
-              <div class="text-3xl">✅</div>
-              <div>
-                <p class="font-bold text-green-800">Jurnal hari ini sudah disubmit</p>
-                <p class="text-sm text-green-700 mt-1">Submit pada: ${new Date(jurnalHariIni.jam_submit).toLocaleTimeString('id-ID')}</p>
-                ${jurnalHariIni.is_late ? '<p class="text-xs text-red-600 mt-1">⚠️ Terlambat dari deadline</p>' : ''}
-              </div>
-            </div>
-          </div>
-        ` : `
-          <div class="bg-white rounded-xl p-4 shadow">
-            <h3 class="font-bold text-slate-800 mb-3">Cek yang Wajib Dilakukan</h3>
-            <ul class="text-sm space-y-2 text-slate-600">
-              <li>✓ Berada di lokasi toko (GPS aktif)</li>
-              <li>✓ Isi checklist 4 bagian</li>
-              <li>✓ Ambil foto bukti (min. 6 foto total)</li>
-              <li>✓ Submit sebelum ${currentCabang.jam_deadline}</li>
-            </ul>
-            <button onclick="renderIsiJurnal()" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">
-              📝 Mulai Isi Jurnal
-            </button>
-          </div>
-        `}
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-lg">Pilih Cabang untuk Isi Jurnal</h2>
+          <button onclick="renderManagerHome()" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">🔄</button>
+        </div>
+        <div id="cabang_list" class="space-y-3">
+          <div class="text-center text-slate-400 py-8">Memuat daftar cabang...</div>
+        </div>
       </div>
     </div>
   `);
+
+  const { data: cabangs, error: e1 } = await sb.from('cabang').select('*').eq('aktif', true).order('nama');
+  if (e1) return toast('Gagal muat cabang: ' + e1.message, 'error');
+
+  const { data: jurnals } = await sb.from('jurnal_harian')
+    .select('cabang_id, jam_submit, is_late')
+    .eq('tanggal', today());
+
+  const jurnalMap = {};
+  (jurnals || []).forEach(j => { jurnalMap[j.cabang_id] = j; });
+
+  const now = new Date();
+  const list = $('cabang_list');
+  list.innerHTML = cabangs.map(c => {
+    const j = jurnalMap[c.id];
+    const belumSetup = (!c.latitude || c.latitude == 0);
+    const [dh, dm] = c.jam_deadline.split(':');
+    const deadline = new Date(); deadline.setHours(+dh, +dm, 0, 0);
+    const lewat = now > deadline;
+
+    let statusHtml = '';
+    let cardClass = 'bg-white border-slate-200';
+    let clickAction = `pilihCabang('${c.id}')`;
+
+    if (belumSetup) {
+      statusHtml = `<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">⚠️ Koordinat belum di-set (hubungi owner)</span>`;
+      cardClass = 'bg-red-50 border-red-200';
+      clickAction = `toast('Cabang ini belum di-setup koordinat GPS. Minta owner untuk setup dulu.', 'warn')`;
+    } else if (j) {
+      statusHtml = `<span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">✅ Sudah diisi ${new Date(j.jam_submit).toLocaleTimeString('id-ID').slice(0,5)}${j.is_late ? ' (telat)' : ''}</span>`;
+      cardClass = 'bg-green-50 border-green-200';
+      clickAction = `toast('Jurnal cabang ini sudah diisi hari ini.', 'info')`;
+    } else if (lewat) {
+      statusHtml = `<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">❌ Lewat deadline ${c.jam_deadline}</span>`;
+      cardClass = 'bg-yellow-50 border-yellow-200';
+    } else {
+      statusHtml = `<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">⏰ Deadline: ${c.jam_deadline}</span>`;
+    }
+
+    return `
+      <div class="${cardClass} border rounded-xl p-4 cursor-pointer" onclick="${clickAction}">
+        <div class="flex justify-between items-start gap-2">
+          <div class="flex-1">
+            <p class="font-bold">${c.nama}</p>
+            <div class="mt-2">${statusHtml}</div>
+          </div>
+          ${!belumSetup && !j ? '<span class="text-blue-600 text-2xl">›</span>' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function pilihCabang(cabangId) {
+  const { data: cabang, error } = await sb.from('cabang').select('*').eq('id', cabangId).single();
+  if (error || !cabang) return toast('Gagal muat data cabang', 'error');
+
+  const { data: existing } = await sb.from('jurnal_harian')
+    .select('id').eq('cabang_id', cabangId).eq('tanggal', today()).maybeSingle();
+  if (existing) return toast('Jurnal cabang ini sudah diisi hari ini', 'warn');
+
+  currentCabang = cabang;
+  renderIsiJurnal();
 }
 
 // ============================================
@@ -617,20 +652,36 @@ async function submitJurnal() {
   }
 
   // Upload foto
-  btn.textContent = '📤 Upload foto...';
+  let totalFoto = 0;
+  let fotoGagal = 0;
+  Object.values(capturedPhotos).forEach(arr => totalFoto += arr.length);
+  let uploaded = 0;
+
   for (const section of Object.keys(capturedPhotos)) {
     for (let i = 0; i < capturedPhotos[section].length; i++) {
-      const blob = await (await fetch(capturedPhotos[section][i])).blob();
-      const path = `${today()}/${currentCabang.id}/${section}_${i}_${Date.now()}.jpg`;
-      const { error: upErr } = await sb.storage.from('foto-jurnal').upload(path, blob, { contentType: 'image/jpeg' });
-      if (!upErr) {
-        await sb.from('foto_jurnal').insert({ jurnal_id: jurnal.id, section, storage_path: path });
+      btn.textContent = `📤 Upload foto ${uploaded + 1}/${totalFoto}...`;
+      try {
+        const blob = await (await fetch(capturedPhotos[section][i])).blob();
+        const path = `${today()}/${currentCabang.id}/${section}_${i}_${Date.now()}.jpg`;
+        const { error: upErr } = await sb.storage.from('foto-jurnal').upload(path, blob, { contentType: 'image/jpeg' });
+        if (upErr) {
+          fotoGagal++;
+        } else {
+          await sb.from('foto_jurnal').insert({ jurnal_id: jurnal.id, section, storage_path: path });
+        }
+      } catch (e) {
+        fotoGagal++;
       }
+      uploaded++;
     }
   }
 
-  toast('Jurnal berhasil disubmit! ✅', 'success');
-  setTimeout(renderManagerHome, 1000);
+  if (fotoGagal > 0) {
+    toast(`Jurnal tersimpan tapi ${fotoGagal} foto gagal upload. Cek koneksi.`, 'warn');
+  } else {
+    toast('Jurnal berhasil disubmit! ✅', 'success');
+  }
+  setTimeout(renderManagerHome, 1500);
 }
 
 // ============================================
@@ -655,7 +706,10 @@ async function renderOwnerDashboard() {
       <div class="p-4">
         <div class="flex justify-between items-center mb-3">
           <h2 class="font-bold text-lg">Status Hari Ini</h2>
-          <input id="tanggal_filter" type="date" value="${today()}" onchange="loadDashboardData()" class="px-3 py-1.5 border rounded-lg text-sm"/>
+          <div class="flex gap-2">
+            <button onclick="loadDashboardData()" class="text-xs bg-blue-100 text-blue-700 px-2 py-1.5 rounded">🔄</button>
+            <input id="tanggal_filter" type="date" value="${today()}" onchange="loadDashboardData()" class="px-3 py-1.5 border rounded-lg text-sm"/>
+          </div>
         </div>
         <div id="dashboard_list" class="space-y-3">
           <div class="text-center text-slate-400 py-8">Memuat...</div>
@@ -853,15 +907,11 @@ async function renderSetupCabang() {
 
         <div class="bg-white rounded-xl p-4 shadow">
           <h3 class="font-bold mb-2">➕ Daftarkan Akun Manager Baru</h3>
-          <p class="text-xs text-slate-500 mb-3">Owner masukkan email & password sementara, manager ganti sendiri nanti.</p>
+          <p class="text-xs text-slate-500 mb-3">Manager akan bisa mengisi jurnal untuk SEMUA cabang.</p>
           <div class="space-y-2">
-            <input id="new_email" type="email" placeholder="Email (contoh: talun@aww.local)" class="w-full px-3 py-2 border rounded-lg text-sm"/>
-            <input id="new_password" type="text" placeholder="Password sementara" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+            <input id="new_email" type="email" placeholder="Email (contoh: manager@aww.local)" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+            <input id="new_password" type="text" placeholder="Password sementara (min 6 huruf)" class="w-full px-3 py-2 border rounded-lg text-sm"/>
             <input id="new_nama" type="text" placeholder="Nama manager" class="w-full px-3 py-2 border rounded-lg text-sm"/>
-            <select id="new_cabang" class="w-full px-3 py-2 border rounded-lg text-sm">
-              <option value="">-- Pilih cabang --</option>
-              ${cabangs.map(c => `<option value="${c.id}">${c.nama}</option>`).join('')}
-            </select>
             <button onclick="tambahManager()" class="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold">Daftarkan</button>
           </div>
         </div>
@@ -898,16 +948,15 @@ async function tambahManager() {
   const email = $('new_email').value.trim();
   const password = $('new_password').value.trim();
   const nama = $('new_nama').value.trim();
-  const cabangId = $('new_cabang').value;
 
-  if (!email || !password || !nama || !cabangId) return toast('Semua field wajib diisi', 'error');
+  if (!email || !password || !nama) return toast('Semua field wajib diisi', 'error');
   if (password.length < 6) return toast('Password minimal 6 karakter', 'error');
 
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) return toast('Gagal daftar: ' + error.message, 'error');
 
   const { error: pErr } = await sb.from('profiles').insert({
-    id: data.user.id, nama, role: 'manager', cabang_id: cabangId
+    id: data.user.id, nama, role: 'manager', cabang_id: null
   });
 
   if (pErr) return toast('Profile error: ' + pErr.message, 'error');
